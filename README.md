@@ -1,93 +1,50 @@
-# Chat Truncation Fixer for TauriTavern v2.1.1
+# Chat Truncation Fixer | 鑱婂ぉ鍔犺浇淇鍣?
+> TauriTavern 2.1.1 鎵╁睍 鈥?寮哄埗鍒濆鍔犺浇 3 鏉℃秷鎭紝鍛婂埆闀垮璇濆惎鍔ㄥ崱椤?
+## 馃 瑙ｅ喅浠€涔堥棶棰橈紵
 
-## 问题
+TauriTavern 浣跨敤 windowed 妯″紡鍔犺浇鑱婂ぉ锛孉ndroid 绔粯璁ゅ垵濮嬪姞杞?**50 鏉℃秷鎭?*锛屾闈㈢ **100 鏉?*銆傞暱瀵硅瘽鍦ㄥ惎鍔ㄦ椂涓ラ噸鍗￠】銆?
+鏈墿灞曢€氳繃鎷︽埅 Tauri IPC 璋冪敤锛屽皢鍒濆鍔犺浇鏉℃暟寮哄埗鏀逛负 **3 鏉?*锛屽惎鍔ㄧ寮€銆?
+## 鉁?鏁堟灉
 
-TauriTavern 使用 **windowed 模式** 加载聊天，初始加载 `DEFAULT_CHAT_WINDOW_LINES` 条消息：
-- Android（移动端）：50 条
-- 桌面端：100 条
+| | 淇敼鍓?| 淇敼鍚?|
+|---|---|---|
+| 鍚姩鍔犺浇 | 50 鏉?(Android) / 100 鏉?(妗岄潰) | 3 鏉?|
+| 鍚姩閫熷害 | 闀垮璇濇槑鏄惧崱椤?| 绉掑紑 |
+| 鏌ョ湅鍘嗗彶 | 鑷姩鍔犺浇鍏ㄩ儴 | 鐐瑰嚮 "Show more messages" 閫愭鍔犺浇 |
 
-长对话在启动时卡顿。`chat_truncation` 设置只影响 non-windowed 模式，对 windowed 模式无效。
+## 馃摝 瀹夎
 
-## 解决方案
+1. 涓嬭浇鏈粨搴撶殑 `manifest.json` 鍜?`index.js`
+2. 鏀惧埌 TauriTavern 鐨勬墿灞曠洰褰曪細
+   ```
+   data/default-user/extensions/tauritavern-chat-truncation-fixer/
+   鈹溾攢鈹€ manifest.json
+   鈹斺攢鈹€ index.js
+   ```
+3. 閲嶅惎 TauriTavern
 
-拦截 `window.__TAURI__.core.invoke`，当后端命令是 `get_chat_payload_tail` 或 `get_group_chat_payload_tail` 时，将 `maxLines` 参数强制改为 3。
-
-保留 windowed 模式的所有优势（分段加载、cursor），只是初始窗口更小。
-
-## 实现原理
-
-### 调用链
-```
-script.js → loadCharacterChatPayloadTail({ maxLines: DEFAULT_CHAT_WINDOW_LINES })
-    ↓
-transport.js → invoke('get_chat_payload_tail', { maxLines: Number(maxLines) })
-    ↓
-tauri-bridge.js → window.__TAURI__.core.invoke(command, args)
-    ↓
-Rust 后端 → 返回最后 N 条消息
-```
-
-### 扩展做的事
-```
-window.__TAURI__.core.invoke 原始函数
-    ↓ 扩展替换为
-patchedInvoke(command, args)
-    ↓ 如果 command == 'get_chat_payload_tail' 或 'get_group_chat_payload_tail'
-    ↓ 将 args.maxLines 改为 3
-    ↓ 调用原始 invoke
-Rust 后端收到 maxLines = 3，只返回最后 3 条消息
-```
-
-## 安装
-
-### 方法一：SillyTavern 扩展界面（推荐）
-1. 打开 TauriTavern → 扩展面板（拼图图标）
-2. Install Extension → 选择 `chat-truncation-fixer.zip`
-3. 重启 TauriTavern
-
-### 方法二：手动安装
-将 `chat-truncation-fixer` 文件夹放到：
-```
-data/default-user/extensions/chat-truncation-fixer/
-  ├── manifest.json
-  └── index.js
-```
-然后重启 TauriTavern。
-
-### 方法三：ADB 推送
-```bash
-adb shell mkdir -p /data/data/com.darkatse.tauritavern/files/data/default-user/extensions/chat-truncation-fixer
-adb push manifest.json /data/data/com.darkatse.tauritavern/files/data/default-user/extensions/chat-truncation-fixer/
-adb push index.js /data/data/com.darkatse.tauritavern/files/data/default-user/extensions/chat-truncation-fixer/
-adb shell am force-stop com.darkatse.tauritavern
-adb shell am start com.darkatse.tauritavern/.MainActivity
-```
-
-## 自定义
-
-编辑 `index.js` 第一行：
+## 鈿欙笍 鑷畾涔?
+缂栬緫 `index.js` 绗竴琛岋細
 ```javascript
-const TARGET_MAX_LINES = 3;  // 改为你想要的数字
+var TARGET_MAX_LINES = 3;  // 鏀规垚浣犳兂瑕佺殑鏁板瓧
 ```
 
-## 文件结构
-```
-chat-truncation-fixer/
-├── manifest.json
-├── index.js
-└── README.md
-```
+## 馃敡 鍘熺悊
 
-## 验证
+TauriTavern 鐨勮亰澶╁姞杞借皟鐢ㄩ摼锛?```
+script.js 鈫?loadCharacterChatPayloadTail({ maxLines: 50 })
+  鈫?transport.js 鈫?invoke('get_chat_payload_tail', { maxLines: 50 })
+    鈫?window.__TAURI__.core.invoke(command, args)
+      鈫?Rust 鍚庣杩斿洖鏈€鍚?N 鏉℃秷鎭?```
 
-启动 TauriTavern 后，在控制台日志中应看到：
-```
-[ChatTruncFixer] Extension loaded — will force maxLines = 3
-[ChatTruncFixer] Installed invoke interceptor (target = 3 lines)
-[ChatTruncFixer] get_chat_payload_tail: maxLines 50 → 3
-```
+鏈墿灞曟嫤鎴?`window.__TAURI__.core.invoke`锛屽綋鍛戒护鏄?`get_chat_payload_tail` 鎴?`get_group_chat_payload_tail` 鏃讹紝灏?`maxLines` 鏀逛负 3銆備繚鐣?windowed 妯″紡鐨勬墍鏈変紭鍔匡紙鍒嗘鍔犺浇銆乧ursor锛夛紝鍙槸鍒濆绐楀彛鏇村皬銆?
+## 馃搵 鍏煎鎬?
+- 鉁?TauriTavern 2.1.1 (arm64-v8a)
+- 鉁?TauriTavern 妗岄潰鐗?- 鉁?缇よ亰 + 瑙掕壊鑱婇兘鐢熸晥
 
-## 兼容性
-- TauriTavern 2.1.1 (arm64-v8a)
-- TauriTavern 桌面版
-- SillyTavern 桌面版（扩展检测到非 Tauri 环境时自动跳过，不会报错）
+## 鈿狅笍 娉ㄦ剰
+
+濡傛灉 TauriTavern 寮€鍚簡"绂佹澶栭儴濯掍綋"锛屽彲鑳介渶瑕佸叧闂閫夐」鎵╁睍鎵嶈兘鐢熸晥銆?
+---
+
+MIT License
