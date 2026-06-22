@@ -1,0 +1,12 @@
+{
+    "display_name": "Chat Truncation Fixer",
+    "loading_order": 1,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "",
+    "author": "OpenClaw",
+    "version": "2.0.0",
+    "home_page": "",
+    "auto_update": false
+}
