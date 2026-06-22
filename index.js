@@ -1,10 +1,11 @@
 /*
  * Chat Truncation Fixer for TauriTavern v2.1.1
  *
- * 閿佸畾 "瑕佸姞杞?# 鏉℃秷鎭? (chat_truncation) = TARGET锛屽苟纭繚瀹為檯鍔犺浇鐢熸晥銆? *   - 婊戝潡 #chat_truncation 閿佸畾
- *   - 鏁板瓧妗?#chat_truncation_counter 鍚屾
- *   - power_user.chat_truncation 閿佸畾
- *   - 鎷︽埅 Tauri invoke 鐨?maxLines (windowed 妯″紡瀹為檯鍔犺浇)
+ * Lock "chat_truncation" = TARGET and make sure it actually takes effect.
+ *   - Lock the #chat_truncation slider
+ *   - Sync the #chat_truncation_counter number box
+ *   - Lock power_user.chat_truncation
+ *   - Intercept Tauri invoke maxLines (windowed mode actual load)
  */
 
 var TARGET = 5;
@@ -15,16 +16,16 @@ var INTERCEPTED_COMMANDS = {
     'get_group_chat_payload_tail': true
 };
 
-// === 閿佸畾 chat_truncation 璁剧疆锛堝彉閲?+ 涓や釜 UI 鍏冪礌锛?==
+// === Lock chat_truncation setting (variable + two UI elements) ===
 function lockTruncation() {
-    // 鍐呴儴鍙橀噺
+    // internal variable
     try {
         if (window.power_user) {
             window.power_user.chat_truncation = TARGET;
         }
     } catch (e) {}
 
-    // 婊戝潡
+    // slider
     try {
         var slider = document.getElementById('chat_truncation');
         if (slider && String(slider.value) !== String(TARGET)) {
@@ -32,7 +33,8 @@ function lockTruncation() {
         }
     } catch (e) {}
 
-    // 鏁板瓧妗?    try {
+    // number box
+    try {
         var counter = document.getElementById('chat_truncation_counter');
         if (counter && String(counter.value) !== String(TARGET)) {
             counter.value = String(TARGET);
@@ -40,7 +42,7 @@ function lockTruncation() {
     } catch (e) {}
 }
 
-// === 鎷︽埅 Tauri invoke (windowed 妯″紡瀹為檯鍔犺浇鏉℃暟) ===
+// === Intercept Tauri invoke (windowed mode actual line count) ===
 function getTauriCore() {
     try {
         var t = window.__TAURI__;
@@ -99,7 +101,7 @@ function installInvokeInterceptor() {
     }
 }
 
-// === 鍚姩 ===
+// === Startup ===
 console.log(TAG + ' Script loaded (target=' + TARGET + ')');
 
 var invokeOk = false;
@@ -116,7 +118,7 @@ function tick() {
     lockTruncation();
 }
 
-// 鍚姩鏃跺揩閫熻疆璇㈠畨瑁咃紝涔嬪悗姣忕缁存寔閿佸畾
+// Poll fast at startup to install quickly, then keep locking periodically
 var fastAttempts = 0;
 function fastInit() {
     tick();
