@@ -2,15 +2,19 @@
  * Chat Truncation Fixer for TauriTavern v2.1.1
  * 
  * Dual path: intercept Tauri invoke (windowed) + override chat_truncation (non-windowed)
+ * Only enforces on initial load, does not interfere with "Show more" pull bar.
  */
 
-var TARGET_MAX_LINES = 3;
+var TARGET_MAX_LINES = 5;
 var TAG = '[ChatTruncFixer]';
 
 var INTERCEPTED_COMMANDS = {
     'get_chat_payload_tail': true,
     'get_group_chat_payload_tail': true
 };
+
+// Track whether the initial load has happened
+var initialLoadDone = false;
 
 // === Path B: override chat_truncation ===
 function overridePowerUser() {
@@ -24,16 +28,11 @@ function overridePowerUser() {
             ok = true;
         }
     } catch (e) {}
-    
-    // Also update UI element if present
-    try {
-        var el = document.getElementById('chat_truncation');
-        if (el && parseInt(el.value) !== TARGET_MAX_LINES) {
-            el.value = String(TARGET_MAX_LINES);
-        }
-    } catch (e) {}
-    
-    // Also persist to localStorage
+    return ok;
+}
+
+// Persist to localStorage once at start
+function persistToLocalStorage() {
     try {
         var raw = localStorage.getItem('power_user');
         if (raw) {
@@ -41,11 +40,10 @@ function overridePowerUser() {
             if (pu && pu.chat_truncation !== TARGET_MAX_LINES) {
                 pu.chat_truncation = TARGET_MAX_LINES;
                 localStorage.setItem('power_user', JSON.stringify(pu));
+                console.log(TAG + ' localStorage updated');
             }
         }
     } catch (e) {}
-    
-    return ok;
 }
 
 // === Path A: intercept Tauri invoke ===
@@ -110,6 +108,8 @@ function installInvokeInterceptor() {
 // === Main ===
 console.log(TAG + ' Script loaded (target=' + TARGET_MAX_LINES + ')');
 
+persistToLocalStorage();
+
 var attempts = 0;
 var maxAttempts = 100;
 var invokeOk = false;
@@ -135,15 +135,16 @@ function tryInstall() {
 
 tryInstall();
 
+// Light periodic check: only re-install invoke if it was removed
+// Do NOT touch power_user or UI elements after initial setup
 setInterval(function () {
-    if (!invokeOk) {
-        invokeOk = installInvokeInterceptor();
-    } else {
+    if (invokeOk) {
         var core = getTauriCore();
         if (core && core.invoke && !core.invoke.__truncFixed) {
             invokeOk = false;
             invokeOk = installInvokeInterceptor();
         }
+    } else {
+        invokeOk = installInvokeInterceptor();
     }
-    overridePowerUser();
-}, 2000);
+}, 5000);
