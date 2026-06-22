@@ -1,92 +1,106 @@
 /*
  * Chat Truncation Fixer for TauriTavern v2.1.1
- * =================================================
- *
- * 闂锛歍auriTavern windowed 妯″紡鍒濆鍔犺浇 50 鏉℃秷鎭紙Android锛夛紝
- *   瀵艰嚧闀垮璇濆惎鍔ㄥ崱椤裤€? *
- * 鏂规锛氭嫤鎴?window.__TAURI__.core.invoke锛屽綋鍚庣鍛戒护鏄? *   get_chat_payload_tail / get_group_chat_payload_tail 鏃讹紝
- *   灏?maxLines 鍙傛暟寮哄埗鏀逛负 3銆? */
+ * Intercept Tauri invoke to force maxLines = 3 on chat load.
+ */
 
-const TARGET_MAX_LINES = 3;
-const TAG = '[ChatTruncFixer]';
+var TARGET_MAX_LINES = 3;
+var TAG = '[ChatTruncFixer]';
 
-const INTERCEPTED_COMMANDS = new Set([
-    'get_chat_payload_tail',
-    'get_group_chat_payload_tail',
-]);
+var INTERCEPTED_COMMANDS = {
+    'get_chat_payload_tail': true,
+    'get_group_chat_payload_tail': true
+};
+
+function getTauriCore() {
+    try {
+        var t = window.__TAURI__;
+        if (t && t.core && typeof t.core.invoke === 'function') {
+            return t.core;
+        }
+    } catch (e) {}
+    return null;
+}
 
 function installInvokeInterceptor() {
-    const tauri = window.__TAURI__;
-    if (!tauri?.core?.invoke) {
-        console.warn(`${TAG} window.__TAURI__.core.invoke not found, retrying...`);
+    var core = getTauriCore();
+    if (!core) {
+        console.warn(TAG + ' window.__TAURI__.core.invoke not found, retrying...');
         return false;
     }
 
-    if (tauri.core.invoke.__truncFixed) {
-        console.log(`${TAG} Already installed, skipping`);
+    if (core.invoke && core.invoke.__truncFixed) {
+        console.log(TAG + ' Already installed, skipping');
         return true;
     }
 
-    const originalInvoke = tauri.core.invoke;
+    var originalInvoke = core.invoke;
 
-    const patchedInvoke = function (command, args, options) {
-        if (INTERCEPTED_COMMANDS.has(command) && args && typeof args === 'object') {
-            const original = args.maxLines ?? args.max_lines;
-            if (original !== undefined && Number(original) > TARGET_MAX_LINES) {
-                console.log(`${TAG} ${command}: maxLines ${original} 鈫?${TARGET_MAX_LINES}`);
-                args = { ...args, maxLines: TARGET_MAX_LINES, max_lines: TARGET_MAX_LINES };
+    var patchedInvoke = function (command, args, options) {
+        if (INTERCEPTED_COMMANDS[command] && args && typeof args === 'object') {
+            var original = args.maxLines != null ? args.maxLines : args.max_lines;
+            if (original != null && Number(original) > TARGET_MAX_LINES) {
+                console.log(TAG + ' ' + command + ': maxLines ' + original + ' -> ' + TARGET_MAX_LINES);
+                var newArgs = {};
+                for (var k in args) {
+                    if (Object.prototype.hasOwnProperty.call(args, k)) {
+                        newArgs[k] = args[k];
+                    }
+                }
+                newArgs.maxLines = TARGET_MAX_LINES;
+                newArgs.max_lines = TARGET_MAX_LINES;
+                args = newArgs;
             }
         }
         return originalInvoke.call(this, command, args, options);
     };
 
-    // 鏍囪宸插畨瑁?    Object.defineProperty(patchedInvoke, '__truncFixed', {
-        value: true,
-        writable: false,
-        enumerable: false,
-        configurable: false,
-    });
-
-    // 鐢?defineProperty 瑕嗙洊鍙鐨?invoke
     try {
-        Object.defineProperty(tauri.core, 'invoke', {
+        Object.defineProperty(patchedInvoke, '__truncFixed', {
+            value: true,
+            writable: false,
+            enumerable: false,
+            configurable: false
+        });
+    } catch (e) {}
+
+    try {
+        Object.defineProperty(core, 'invoke', {
             value: patchedInvoke,
             writable: true,
             configurable: true,
-            enumerable: true,
+            enumerable: true
         });
-        console.log(`${TAG} Installed invoke interceptor (target = ${TARGET_MAX_LINES} lines)`);
+        console.log(TAG + ' Installed invoke interceptor (target = ' + TARGET_MAX_LINES + ' lines)');
         return true;
     } catch (e) {
-        console.error(`${TAG} Failed to override invoke:`, e);
+        console.error(TAG + ' Failed to override invoke:', e);
         return false;
     }
 }
 
-let attempts = 0;
-const maxAttempts = 50;
+var attempts = 0;
+var maxAttempts = 50;
 
 function tryInstall() {
     if (installInvokeInterceptor()) {
         return;
     }
-
     attempts++;
     if (attempts < maxAttempts) {
         setTimeout(tryInstall, 100);
     } else {
-        console.error(`${TAG} Failed to install after ${maxAttempts} attempts`);
+        console.error(TAG + ' Failed to install after ' + maxAttempts + ' attempts');
     }
 }
 
 tryInstall();
 
-// 鍏滃簳锛氬畾鏈熸鏌?invoke 鏄惁琚繕鍘?setInterval(() => {
-    const tauri = window.__TAURI__;
-    if (tauri?.core?.invoke && !tauri.core.invoke.__truncFixed) {
-        console.log(`${TAG} invoke was replaced, re-installing...`);
+setInterval(function () {
+    var core = getTauriCore();
+    if (core && core.invoke && !core.invoke.__truncFixed) {
+        console.log(TAG + ' invoke was replaced, re-installing...');
         installInvokeInterceptor();
     }
 }, 2000);
 
-console.log(`${TAG} Extension loaded 鈥?will force maxLines = ${TARGET_MAX_LINES}`);
+console.log(TAG + ' Extension loaded - will force maxLines = ' + TARGET_MAX_LINES);
