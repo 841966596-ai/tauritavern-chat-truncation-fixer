@@ -1,11 +1,13 @@
 /*
  * Chat Truncation Fixer for TauriTavern v2.1.1
- * 
- * Dual path: intercept Tauri invoke (windowed) + override chat_truncation (non-windowed)
- * Only enforces on initial load, does not interfere with "Show more" pull bar.
+ *
+ * 閿佸畾 "瑕佸姞杞?# 鏉℃秷鎭? (chat_truncation) = TARGET锛屽苟纭繚瀹為檯鍔犺浇鐢熸晥銆? *   - 婊戝潡 #chat_truncation 閿佸畾
+ *   - 鏁板瓧妗?#chat_truncation_counter 鍚屾
+ *   - power_user.chat_truncation 閿佸畾
+ *   - 鎷︽埅 Tauri invoke 鐨?maxLines (windowed 妯″紡瀹為檯鍔犺浇)
  */
 
-var TARGET_MAX_LINES = 5;
+var TARGET = 5;
 var TAG = '[ChatTruncFixer]';
 
 var INTERCEPTED_COMMANDS = {
@@ -13,40 +15,32 @@ var INTERCEPTED_COMMANDS = {
     'get_group_chat_payload_tail': true
 };
 
-// Track whether the initial load has happened
-var initialLoadDone = false;
-
-// === Path B: override chat_truncation ===
-function overridePowerUser() {
-    var ok = false;
+// === 閿佸畾 chat_truncation 璁剧疆锛堝彉閲?+ 涓や釜 UI 鍏冪礌锛?==
+function lockTruncation() {
+    // 鍐呴儴鍙橀噺
     try {
-        if (typeof window.power_user !== 'undefined' && window.power_user) {
-            if (window.power_user.chat_truncation !== TARGET_MAX_LINES) {
-                console.log(TAG + ' power_user.chat_truncation: ' + window.power_user.chat_truncation + ' -> ' + TARGET_MAX_LINES);
-                window.power_user.chat_truncation = TARGET_MAX_LINES;
-            }
-            ok = true;
+        if (window.power_user) {
+            window.power_user.chat_truncation = TARGET;
         }
     } catch (e) {}
-    return ok;
-}
 
-// Persist to localStorage once at start
-function persistToLocalStorage() {
+    // 婊戝潡
     try {
-        var raw = localStorage.getItem('power_user');
-        if (raw) {
-            var pu = JSON.parse(raw);
-            if (pu && pu.chat_truncation !== TARGET_MAX_LINES) {
-                pu.chat_truncation = TARGET_MAX_LINES;
-                localStorage.setItem('power_user', JSON.stringify(pu));
-                console.log(TAG + ' localStorage updated');
-            }
+        var slider = document.getElementById('chat_truncation');
+        if (slider && String(slider.value) !== String(TARGET)) {
+            slider.value = String(TARGET);
+        }
+    } catch (e) {}
+
+    // 鏁板瓧妗?    try {
+        var counter = document.getElementById('chat_truncation_counter');
+        if (counter && String(counter.value) !== String(TARGET)) {
+            counter.value = String(TARGET);
         }
     } catch (e) {}
 }
 
-// === Path A: intercept Tauri invoke ===
+// === 鎷︽埅 Tauri invoke (windowed 妯″紡瀹為檯鍔犺浇鏉℃暟) ===
 function getTauriCore() {
     try {
         var t = window.__TAURI__;
@@ -71,16 +65,16 @@ function installInvokeInterceptor() {
     var patchedInvoke = function (command, args, options) {
         if (INTERCEPTED_COMMANDS[command] && args && typeof args === 'object') {
             var original = args.maxLines != null ? args.maxLines : args.max_lines;
-            if (original != null && Number(original) > TARGET_MAX_LINES) {
-                console.log(TAG + ' ' + command + ': maxLines ' + original + ' -> ' + TARGET_MAX_LINES);
+            if (original != null && Number(original) !== TARGET) {
+                console.log(TAG + ' ' + command + ': maxLines ' + original + ' -> ' + TARGET);
                 var newArgs = {};
                 for (var k in args) {
                     if (Object.prototype.hasOwnProperty.call(args, k)) {
                         newArgs[k] = args[k];
                     }
                 }
-                newArgs.maxLines = TARGET_MAX_LINES;
-                newArgs.max_lines = TARGET_MAX_LINES;
+                newArgs.maxLines = TARGET;
+                newArgs.max_lines = TARGET;
                 args = newArgs;
             }
         }
@@ -105,46 +99,32 @@ function installInvokeInterceptor() {
     }
 }
 
-// === Main ===
-console.log(TAG + ' Script loaded (target=' + TARGET_MAX_LINES + ')');
+// === 鍚姩 ===
+console.log(TAG + ' Script loaded (target=' + TARGET + ')');
 
-persistToLocalStorage();
-
-var attempts = 0;
-var maxAttempts = 100;
 var invokeOk = false;
-var puOk = false;
 
-function tryInstall() {
+function tick() {
     if (!invokeOk) {
         invokeOk = installInvokeInterceptor();
-    }
-    if (!puOk) {
-        puOk = overridePowerUser();
-    }
-    
-    if (!invokeOk || !puOk) {
-        attempts++;
-        if (attempts < maxAttempts) {
-            setTimeout(tryInstall, 100);
-        } else {
-            console.error(TAG + ' Gave up. invoke=' + invokeOk + ' power_user=' + puOk);
-        }
-    }
-}
-
-tryInstall();
-
-// Light periodic check: only re-install invoke if it was removed
-// Do NOT touch power_user or UI elements after initial setup
-setInterval(function () {
-    if (invokeOk) {
+    } else {
         var core = getTauriCore();
         if (core && core.invoke && !core.invoke.__truncFixed) {
-            invokeOk = false;
             invokeOk = installInvokeInterceptor();
         }
-    } else {
-        invokeOk = installInvokeInterceptor();
     }
-}, 5000);
+    lockTruncation();
+}
+
+// 鍚姩鏃跺揩閫熻疆璇㈠畨瑁咃紝涔嬪悗姣忕缁存寔閿佸畾
+var fastAttempts = 0;
+function fastInit() {
+    tick();
+    fastAttempts++;
+    if (fastAttempts < 50 && !invokeOk) {
+        setTimeout(fastInit, 100);
+    }
+}
+fastInit();
+
+setInterval(tick, 1000);
