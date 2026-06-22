@@ -24,12 +24,10 @@ function getTauriCore() {
 function installInvokeInterceptor() {
     var core = getTauriCore();
     if (!core) {
-        console.warn(TAG + ' window.__TAURI__.core.invoke not found, retrying...');
         return false;
     }
 
     if (core.invoke && core.invoke.__truncFixed) {
-        console.log(TAG + ' Already installed, skipping');
         return true;
     }
 
@@ -70,29 +68,46 @@ function installInvokeInterceptor() {
             configurable: true,
             enumerable: true
         });
-        console.log(TAG + ' Installed invoke interceptor (target = ' + TARGET_MAX_LINES + ' lines)');
+        console.log(TAG + ' Installed OK (target=' + TARGET_MAX_LINES + ')');
         return true;
     } catch (e) {
-        console.error(TAG + ' Failed to override invoke:', e);
+        console.error(TAG + ' override failed: ' + e.message);
+        // fallback: try direct assignment
+        try {
+            core.invoke = patchedInvoke;
+            console.log(TAG + ' Installed via direct assignment');
+            return true;
+        } catch (e2) {
+            console.error(TAG + ' direct assignment also failed: ' + e2.message);
+        }
         return false;
     }
 }
 
 var attempts = 0;
-var maxAttempts = 50;
+var maxAttempts = 100;
 
 function tryInstall() {
-    if (installInvokeInterceptor()) {
-        return;
+    var core = getTauriCore();
+    if (core) {
+        console.log(TAG + ' Attempt ' + (attempts + 1) + ': __TAURI__.core.invoke found, installing...');
+        if (installInvokeInterceptor()) {
+            return;
+        }
+    } else {
+        if (attempts % 10 === 0) {
+            console.log(TAG + ' Attempt ' + (attempts + 1) + ': __TAURI__.core.invoke not ready yet');
+        }
     }
     attempts++;
     if (attempts < maxAttempts) {
         setTimeout(tryInstall, 100);
     } else {
-        console.error(TAG + ' Failed to install after ' + maxAttempts + ' attempts');
+        console.error(TAG + ' Gave up after ' + maxAttempts + ' attempts. window.__TAURI__ = ' + (typeof window.__TAURI__));
     }
 }
 
+console.log(TAG + ' Script loaded. window.__TAURI__ = ' + (typeof window.__TAURI__));
 tryInstall();
 
 setInterval(function () {
@@ -102,5 +117,3 @@ setInterval(function () {
         installInvokeInterceptor();
     }
 }, 2000);
-
-console.log(TAG + ' Extension loaded - will force maxLines = ' + TARGET_MAX_LINES);
