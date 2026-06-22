@@ -1,6 +1,9 @@
 /*
  * Chat Truncation Fixer for TauriTavern v2.1.1
- * Intercept Tauri invoke to force maxLines = 3 on chat load.
+ * 
+ * 鍙岃矾寰勮鐩栵細
+ *   璺緞A (windowed): 鎷︽埅 Tauri invoke锛屾敼 maxLines
+ *   璺緞B (non-windowed): 璁剧疆 power_user.chat_truncation
  */
 
 var TARGET_MAX_LINES = 3;
@@ -11,6 +14,47 @@ var INTERCEPTED_COMMANDS = {
     'get_group_chat_payload_tail': true
 };
 
+// === 璺緞B: 璁剧疆 chat_truncation ===
+// 閫氳繃 localStorage 鎸佷箙鍖栵紝灏濊瘯鍦?script.js 涔嬪墠鐢熸晥
+try {
+    // SillyTavern power_user settings 瀛樺湪 localStorage
+    var raw = localStorage.getItem('power_user');
+    if (raw) {
+        var pu = JSON.parse(raw);
+        if (pu && pu.chat_truncation !== TARGET_MAX_LINES) {
+            console.log(TAG + ' localStorage chat_truncation: ' + pu.chat_truncation + ' -> ' + TARGET_MAX_LINES);
+            pu.chat_truncation = TARGET_MAX_LINES;
+            localStorage.setItem('power_user', JSON.stringify(pu));
+        }
+    }
+} catch (e) {
+    console.warn(TAG + ' localStorage power_user update failed: ' + e.message);
+}
+
+// 杩愯鏃惰鐩?power_user 瀵硅薄锛堝鏋滃凡鍔犺浇锛?function overridePowerUser() {
+    try {
+        // SillyTavern 鎶?power_user 鎸傚湪 window 涓?        if (typeof window.power_user !== 'undefined' && window.power_user) {
+            if (window.power_user.chat_truncation !== TARGET_MAX_LINES) {
+                console.log(TAG + ' power_user.chat_truncation: ' + window.power_user.chat_truncation + ' -> ' + TARGET_MAX_LINES);
+                window.power_user.chat_truncation = TARGET_MAX_LINES;
+            }
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
+// UI 鍏冪礌瑕嗙洊
+function overrideUI() {
+    try {
+        var el = document.getElementById('chat_truncation');
+        if (el && parseInt(el.value) !== TARGET_MAX_LINES) {
+            el.value = String(TARGET_MAX_LINES);
+        }
+    } catch (e) {}
+}
+
+// === 璺緞A: 鎷︽埅 Tauri invoke ===
 function getTauriCore() {
     try {
         var t = window.__TAURI__;
@@ -68,52 +112,55 @@ function installInvokeInterceptor() {
             configurable: true,
             enumerable: true
         });
-        console.log(TAG + ' Installed OK (target=' + TARGET_MAX_LINES + ')');
+        console.log(TAG + ' Invoke interceptor installed');
         return true;
     } catch (e) {
-        console.error(TAG + ' override failed: ' + e.message);
-        // fallback: try direct assignment
+        console.error(TAG + ' Invoke override failed: ' + e.message);
         try {
             core.invoke = patchedInvoke;
-            console.log(TAG + ' Installed via direct assignment');
+            console.log(TAG + ' Invoke installed via direct assignment');
             return true;
         } catch (e2) {
-            console.error(TAG + ' direct assignment also failed: ' + e2.message);
+            console.error(TAG + ' Direct assignment also failed: ' + e2.message);
         }
         return false;
     }
 }
 
+// === 鍚姩 ===
+console.log(TAG + ' Script loaded');
+
+// 绔嬪嵆灏濊瘯瑕嗙洊 power_user
+overridePowerUser();
+
 var attempts = 0;
 var maxAttempts = 100;
 
 function tryInstall() {
-    var core = getTauriCore();
-    if (core) {
-        console.log(TAG + ' Attempt ' + (attempts + 1) + ': __TAURI__.core.invoke found, installing...');
-        if (installInvokeInterceptor()) {
-            return;
-        }
-    } else {
-        if (attempts % 10 === 0) {
-            console.log(TAG + ' Attempt ' + (attempts + 1) + ': __TAURI__.core.invoke not ready yet');
-        }
+    var installed = installInvokeInterceptor();
+    var puOk = overridePowerUser();
+    
+    if (installed && puOk) {
+        return;
     }
+    
     attempts++;
     if (attempts < maxAttempts) {
         setTimeout(tryInstall, 100);
     } else {
-        console.error(TAG + ' Gave up after ' + maxAttempts + ' attempts. window.__TAURI__ = ' + (typeof window.__TAURI__));
+        console.error(TAG + ' Gave up. invoke=' + (installInvokeInterceptor() ? 'ok' : 'fail') + ' power_user=' + (overridePowerUser() ? 'ok' : 'fail'));
     }
 }
 
-console.log(TAG + ' Script loaded. window.__TAURI__ = ' + (typeof window.__TAURI__));
 tryInstall();
 
-setInterval(function () {
+// 瀹氭湡纭繚涓や釜璺緞閮界敓鏁?setInterval(function () {
     var core = getTauriCore();
     if (core && core.invoke && !core.invoke.__truncFixed) {
-        console.log(TAG + ' invoke was replaced, re-installing...');
         installInvokeInterceptor();
     }
+    overridePowerUser();
+    overrideUI();
 }, 2000);
+
+console.log(TAG + ' Init done (target=' + TARGET_MAX_LINES + ')');
